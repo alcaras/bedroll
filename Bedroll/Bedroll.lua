@@ -13,8 +13,10 @@
 --
 -- The countdown: a thin line above the character while you lie in a bag: the stacks above it, the time to 3/3 with a
 -- fresh 2 h right of it, a notch per stack. Gone when it is full (one chat line and a chime: you can get up).
--- In the bag = the tracking aura on you. Should the client hide it from addons (it is a hidden aura), the fallback:
--- your own unroll and every stack landing count as "in a bag" for the next minute (+5 s).
+-- In the bag = the tracking aura on you; the client hides it from addons (a hidden aura), so: resting. Lying on the
+-- bag rests you as an inn does (the user, in game); the bag cannot be unrolled in an inn or city, so a resting
+-- stretch after your unroll, or one a stack lands in, is the bag's. After your unroll and until you lie on it, the
+-- line says "Lie on the bag".
 --
 -- The reminder: the bag's own button (a secure item button, click = unroll), out of combat only (a secure state driver
 -- hides it in combat), when the bag is ready and the buff is missing, below 3/3 or under LEAD minutes left. Not in an
@@ -36,7 +38,7 @@ local TICK_S = 60             -- a stack per minute in the bag
 local BUFF_S = 7200           -- the buff's 2 h
 local BAG_S = 1200            -- the bag's 20 min
 local CAST_S = 15             -- the unroll's cast
-local GRACE = 5               -- seconds a stack may come late before the fallback says you left
+local GRACE = 5               -- seconds a stack may come late
 local GCD = 1.5               -- a cooldown this short is the global one, not the bag's
 local SOUND_KIT = 8960        -- READY_CHECK: one soft chime at 3/3
 local TEST_S = 15             -- /bedroll test: 3 stacks in 15 s
@@ -119,12 +121,40 @@ end
 
 local function Left(now) return math.max(0, buff.expires - now) end
 
+-- On the bag = resting (the user, in game 2026-11-06: "being on the bag gives you rested"; standing next to it does
+-- not). An inn or a city rests you too, but the bag cannot be unrolled there: a resting stretch is the bag's when it
+-- began after your own unroll (within the bag's 20 min), you were resting at your unroll, or a stack landed in it.
+-- Getting up ends the resting at once (PLAYER_UPDATE_RESTING), so the line goes when you do.
+local restingSince   -- GetTime() the resting began; nil = not resting
+local bagRest        -- this resting stretch is a bag's
+
+local function IsRestingNow()
+	local ok, r = pcall(IsResting)   -- guard: legacy global
+	return ok and L.Value(r) == true
+end
+
+local function ReadRest(now)
+	if IsRestingNow() then
+		if not restingSince then
+			restingSince = now
+			bagRest = (unrolledAt ~= nil and now - unrolledAt < BAG_S)
+				or (lastTick ~= nil and now - lastTick <= TICK_S + GRACE)   -- a /reload on the bag
+		end
+	else
+		restingSince, bagRest = nil, false
+	end
+end
+
 local function InBag(now)
 	if trackOn then return true end
 	if db and db.trackSeen then return false end   -- the client shows the aura: its absence is the answer
-	local anchor = lastTick
-	if unrolledAt and now - unrolledAt < BAG_S and (not anchor or unrolledAt > anchor) then anchor = unrolledAt end
-	return anchor ~= nil and now - anchor <= TICK_S + GRACE
+	return restingSince ~= nil and bagRest == true
+end
+
+-- after your own unroll, until you lie on the bag (or WAIT_S passes): the line says so
+local WAIT_S = 90
+local function Waiting(now)
+	return unrolledAt ~= nil and now - unrolledAt <= WAIT_S and not InBag(now)
 end
 
 local function Fresh(now) return Stacks(now) > 0 and Left(now) >= BUFF_S - TICK_S - GRACE end
@@ -243,6 +273,16 @@ local function NextTick(now)
 	return math.max(n, now)
 end
 
+-- unrolled, not on it yet
+local function DrawWaiting()
+	bar:SetValue(0)
+	bar:SetStatusBarColor(unpack(LAYOUT.fill))
+	spark:Hide()
+	for _, n in ipairs(notches) do n:Hide() end
+	label:SetText("Lie on the bag: a stack a minute")
+	timeText:SetText("")
+end
+
 local function Finish(now)
 	stay.done, stay.doneAt = true, now
 	if PlaySound then pcall(PlaySound, SOUND_KIT) end   -- guard: a sound kit a patch removed
@@ -259,6 +299,15 @@ local function Tick()
 		local stacks = math.min(MAX_STACKS, math.floor(e / (TEST_S / MAX_STACKS)))
 		if e >= TEST_S + LAYOUT.doneHold then stay = nil line:Hide() return end
 		Draw(e / TEST_S, stacks, TEST_S - e, MAX_STACKS, e >= TEST_S)
+		return
+	end
+	if stay.waiting then
+		if L.InCombat() or not Waiting(now) then
+			Update()
+			if stay and stay.waiting then stay = nil line:Hide() end
+			return
+		end
+		DrawWaiting()
 		return
 	end
 	if L.InCombat() or not InBag(now) then stay = nil line:Hide() Update() return end
@@ -360,10 +409,8 @@ local function Schedule(now)
 		at(buff.expires - (db and db.lead or 10) * 60)
 		at(buff.expires)
 	end
-	-- the fallback's "in a bag" runs out by the clock (no aura tells us you got up)
-	if not trackOn and not (db and db.trackSeen) then
-		at(math.max(lastTick or 0, unrolledAt or 0) + TICK_S + GRACE)
-	end
+	-- the "lie on the bag" prompt runs out by the clock
+	if unrolledAt then at(unrolledAt + WAIT_S) end
 	if soon then
 		L.After(soon - now + 0.1, function() if mine == gen then Update() end end, "schedule")
 	end
@@ -383,10 +430,19 @@ Update = function()
 	if not db then return end
 	local now = GetTime()
 	if L.InCombat() then return end   -- the state driver hides the button; the line hides itself
-	if db.enabled and not MaxLevel() and InBag(now) then
-		if not stay or stay.test then stay = { start = now } end
+	ReadRest(now)
+	local on = db.enabled and not MaxLevel()
+	if on and InBag(now) then
+		-- the stay starts when you lay down: the first stack comes a minute later
+		if not stay or stay.test or stay.waiting then stay = { start = restingSince or now } end
 		if not stay.done or now - stay.doneAt < LAYOUT.doneHold then line:Show() end
+	elseif on and Waiting(now) then
+		if not stay or not stay.waiting then stay = { start = now, waiting = true } end
+		line:Show()
 	elseif stay and not stay.test then
+		if stay.waiting and unrolledAt and now - unrolledAt > WAIT_S then
+			P("you're not on the bag yet: lie on it (standing next to it gives nothing).")
+		end
 		stay = nil
 		line:Hide()
 	end
@@ -395,14 +451,12 @@ Update = function()
 end
 ns.Update = Update
 
--- fallback start of a stay after a stack landed (the client hides the tracking aura): the stay began at that stack
+-- a stack landing while you rest: this resting stretch is a bag's (a group mate's bag: no unroll of yours)
 local function OnAura()
 	if L.InCombat() then return end
 	local before = lastTick
 	Read()
-	if not stay and lastTick and lastTick ~= before and not trackOn and not (db and db.trackSeen) then
-		stay = { start = lastTick }
-	end
+	if lastTick and lastTick ~= before and restingSince then bagRest = true end
 	Update()
 end
 
@@ -441,6 +495,7 @@ L.Script(ev, "OnEvent", function(_, event, unit, _, spellID)
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		if L.Num(spellID) == UNROLL then
 			unrolledAt = GetTime()
+			if restingSince then bagRest = true end   -- resting already: you're on it (no inn lets you unroll)
 			Read()
 			Update()
 		end
@@ -454,6 +509,7 @@ L.Script(ev, "OnEvent", function(_, event, unit, _, spellID)
 		leaving = false
 		lastXP = nil       -- a fresh reading after the loading screen
 		unrolledAt = nil   -- zoning despawns the bag
+		restingSince, bagRest = nil, false   -- read again (a /reload on the bag: a stack in the last minute)
 		Read()
 		OnXP()
 		Update()
