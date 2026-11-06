@@ -133,11 +133,34 @@ local function IsRestingNow()
 	return ok and L.Value(r) == true
 end
 
+-- where you stand (yards, UnitPosition): nil where the client withholds it (instances)
+local function Pos()
+	local ok, x, y, _, map = pcall(UnitPosition, "player")   -- guard: legacy global
+	x, y = ok and L.Num(x), ok and L.Num(y)
+	if x and y then return { x, y, ok and L.Num(map) or 0 } end
+end
+local unrolledPos      -- Pos() at your own unroll
+local NEAR = 6         -- yards from the unroll that count as on the bag (it is about 2 x 3)
+local WAIT_S = 90      -- after your own unroll, until you are on the bag: the line says so
+
+-- your bag: resting began near where you unrolled it (within its 20 min), or, where the position can't be read,
+-- within WAIT_S of the unroll. Was "any resting within the bag's 20 min", and an inn you walked into after unrolling
+-- counted as the bag (in game 2026-11-06: "it shows when in an inn")
+local function NearUnroll(now)
+	if not unrolledAt or now - unrolledAt >= BAG_S then return false end
+	local here = Pos()
+	if here and unrolledPos then
+		local dx, dy = here[1] - unrolledPos[1], here[2] - unrolledPos[2]
+		return here[3] == unrolledPos[3] and dx * dx + dy * dy <= NEAR * NEAR
+	end
+	return now - unrolledAt <= WAIT_S
+end
+
 local function ReadRest(now)
 	if IsRestingNow() then
 		if not restingSince then
 			restingSince = now
-			bagRest = (unrolledAt ~= nil and now - unrolledAt < BAG_S)
+			bagRest = NearUnroll(now)
 				or (lastTick ~= nil and now - lastTick <= TICK_S + GRACE)   -- a /reload on the bag
 		end
 	else
@@ -152,7 +175,6 @@ local function InBag(now)
 end
 
 -- after your own unroll, until you are on the bag (or WAIT_S passes): the line says so
-local WAIT_S = 90
 local function Waiting(now)
 	return unrolledAt ~= nil and now - unrolledAt <= WAIT_S and not InBag(now)
 end
@@ -495,6 +517,7 @@ L.Script(ev, "OnEvent", function(_, event, unit, _, spellID)
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		if L.Num(spellID) == UNROLL then
 			unrolledAt = GetTime()
+			unrolledPos = Pos()
 			if restingSince then bagRest = true end   -- resting already: you're on it (no inn lets you unroll)
 			Read()
 			Update()
