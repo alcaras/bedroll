@@ -5,18 +5,18 @@
 --
 -- What the client's tables say (DB2, build 1.60.1.70790):
 --   item 211527 Cozy Sleeping Bag -> spell 429961 Unroll Bag: 15 s cast, 1 h cooldown, the bag lasts 20 min
---   spell 429960 Well-Rested Tracking Aura: on you while you lie in a bag (anyone's); every 60 s it casts
+--   spell 429960 Well-Rested Tracking Aura: on you while you are on a bag (anyone's); every 60 s it casts
 --   spell 429959 Well-Rested: +1% XP per stack (quest and kill XP), 3 stacks, 2 h; each stack refreshes the 2 h.
 -- So 3/3 takes 3 minutes from nothing, but ONE minute in the bag while you still have 3/3 gives a fresh 2 h. The
 -- cheap way to keep 3% up: refresh before it falls off (the reminder shows LEAD minutes before), 15 s + 1 min instead
 -- of 15 s + 3 min. The 1 h cooldown is never the limit (the buff lasts 2 h).
 --
--- The countdown: a thin line above the character while you lie in a bag: the stacks above it, the time to 3/3 with a
+-- The countdown: a thin line above the character while you are on a bag: the stacks above it, the time to 3/3 with a
 -- fresh 2 h right of it, a notch per stack. Gone when it is full (one chat line and a chime: you can get up).
--- In the bag = the tracking aura on you; the client hides it from addons (a hidden aura), so: resting. Lying on the
--- bag rests you as an inn does (the user, in game); the bag cannot be unrolled in an inn or city, so a resting
--- stretch after your unroll, or one a stack lands in, is the bag's. After your unroll and until you lie on it, the
--- line says "Lie on the bag".
+-- In the bag = the tracking aura on you; the client hides it from addons (a hidden aura), so: resting. Being on
+-- the bag rests you as an inn does, sitting or standing too (the user, in game: "rested = you're on it"); next to it
+-- does not. The bag cannot be unrolled in an inn or city, so a resting stretch after your unroll, or one a stack
+-- lands in, is the bag's. After your unroll and until you are on it, the line says "Get on the bag".
 --
 -- The reminder: the bag's own button (a secure item button, click = unroll), out of combat only (a secure state driver
 -- hides it in combat), when the bag is ready and the buff is missing, below 3/3 or under LEAD minutes left. Not in an
@@ -151,7 +151,7 @@ local function InBag(now)
 	return restingSince ~= nil and bagRest == true
 end
 
--- after your own unroll, until you lie on the bag (or WAIT_S passes): the line says so
+-- after your own unroll, until you are on the bag (or WAIT_S passes): the line says so
 local WAIT_S = 90
 local function Waiting(now)
 	return unrolledAt ~= nil and now - unrolledAt <= WAIT_S and not InBag(now)
@@ -262,7 +262,7 @@ local function Draw(share, stacks, left, ticks, done)
 	end
 end
 
--- the next stack: a minute after the last one, else a minute after you lay down
+-- the next stack: a minute after the last one, else a minute after you got on it
 local function NextTick(now)
 	local n
 	if lastTick and lastTick >= stay.start - TICK_S then n = lastTick + TICK_S end
@@ -279,7 +279,7 @@ local function DrawWaiting()
 	bar:SetStatusBarColor(unpack(LAYOUT.fill))
 	spark:Hide()
 	for _, n in ipairs(notches) do n:Hide() end
-	label:SetText("Lie on the bag: a stack a minute")
+	label:SetText("Get on the bag: a stack a minute")
 	timeText:SetText("")
 end
 
@@ -409,7 +409,7 @@ local function Schedule(now)
 		at(buff.expires - (db and db.lead or 10) * 60)
 		at(buff.expires)
 	end
-	-- the "lie on the bag" prompt runs out by the clock
+	-- the "get on the bag" prompt runs out by the clock
 	if unrolledAt then at(unrolledAt + WAIT_S) end
 	if soon then
 		L.After(soon - now + 0.1, function() if mine == gen then Update() end end, "schedule")
@@ -433,7 +433,7 @@ Update = function()
 	ReadRest(now)
 	local on = db.enabled and not MaxLevel()
 	if on and InBag(now) then
-		-- the stay starts when you lay down: the first stack comes a minute later
+		-- the stay starts when you got on it: the first stack comes a minute later
 		if not stay or stay.test or stay.waiting then stay = { start = restingSince or now } end
 		if not stay.done or now - stay.doneAt < LAYOUT.doneHold then line:Show() end
 	elseif on and Waiting(now) then
@@ -441,7 +441,7 @@ Update = function()
 		line:Show()
 	elseif stay and not stay.test then
 		if stay.waiting and unrolledAt and now - unrolledAt > WAIT_S then
-			P("you're not on the bag yet: lie on it (standing next to it gives nothing).")
+			P("you're not on the bag yet: stand or sit on it (next to it gives nothing).")
 		end
 		stay = nil
 		line:Hide()

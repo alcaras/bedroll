@@ -1,13 +1,13 @@
 # Bedroll
 
-A WoW Forever addon for the Cozy Sleeping Bag. Lie in the bag and Well-Rested gives +1% quest and kill XP per stack,
+A WoW Forever addon for the Cozy Sleeping Bag. Stand or sit on the bag and Well-Rested gives +1% quest and kill XP per stack,
 up to 3 stacks, for 2 hours. Bedroll shows how long to rest for 3/3 and reminds you when the buff runs low.
 
 ## What it shows
 
-- **The countdown:** while you lie on a bag (on it, not next to it: lying on it rests you, as an inn does), a thin
+- **The countdown:** while you're on a bag (on it, not next to it: being on it rests you, as an inn does), a thin
   line above your character counts down to 3/3 with a fresh 2 hours. Right after you unroll it, the line says
-  "Lie on the bag" until you do. The stacks show above it and the time left on its right, with a notch per stack. When it's full the line
+  "Get on the bag" until you do. The stacks show above it and the time left on its right, with a notch per stack. When it's full the line
   turns green and you get one chat line and a chime: you can get up.
 - **The reminder:** out of combat, the bag's own button appears above your character when the bag is ready and the
   buff is missing, below 3/3, or has less than 10 minutes left. Click it to unroll the bag. It stays away in inns and
