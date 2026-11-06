@@ -140,6 +140,7 @@ local function Pos()
 	if x and y then return { x, y, ok and L.Num(map) or 0 } end
 end
 local unrolledPos      -- Pos() at your own unroll
+local NEW_STACK_S = 30 -- a stack's 2 h restarting at least this much later than the last is a new stack
 local NEAR = 6         -- yards from the unroll that count as on the bag (it is about 2 x 3)
 local WAIT_S = 90      -- after your own unroll, until you are on the bag: the line says so
 
@@ -156,12 +157,18 @@ local function NearUnroll(now)
 	return now - unrolledAt <= WAIT_S
 end
 
+-- the first resting read after a login or /reload: a stack in the last minute then means you were on the bag. Only
+-- then: at any other time it made an inn the bag when you walked in within a minute of your last stack (in game
+-- 2026-11-06, the 3/3 line in an inn)
+local firstRead = true
 local function ReadRest(now)
+	local reload = firstRead
+	firstRead = false
 	if IsRestingNow() then
 		if not restingSince then
 			restingSince = now
 			bagRest = NearUnroll(now)
-				or (lastTick ~= nil and now - lastTick <= TICK_S + GRACE)   -- a /reload on the bag
+				or (reload and lastTick ~= nil and now - lastTick <= TICK_S + GRACE)   -- a /reload on the bag
 		end
 	else
 		restingSince, bagRest = nil, false
@@ -478,7 +485,9 @@ local function OnAura()
 	if L.InCombat() then return end
 	local before = lastTick
 	Read()
-	if lastTick and lastTick ~= before and restingSince then bagRest = true end
+	-- a real new stack: the 2 h restarted, well past the last one (not the first reading after a /reload, nil -> a
+	-- value, which made an inn the bag)
+	if lastTick and before and lastTick > before + NEW_STACK_S and restingSince then bagRest = true end
 	Update()
 end
 
@@ -533,6 +542,7 @@ L.Script(ev, "OnEvent", function(_, event, unit, _, spellID)
 		lastXP = nil       -- a fresh reading after the loading screen
 		unrolledAt = nil   -- zoning despawns the bag
 		restingSince, bagRest = nil, false   -- read again (a /reload on the bag: a stack in the last minute)
+		firstRead = true
 		Read()
 		OnXP()
 		Update()
