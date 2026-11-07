@@ -99,7 +99,9 @@ end
 
 -- out of combat only: in combat the fields are secret (and nobody rests there)
 local function Read()
-	if L.InCombat() then return end
+	-- in combat, and wherever auras are secret (a battleground, a dungeon: the buff on you read as none, in game
+	-- 2026-11-06): keep what was last read
+	if L.InCombat() or L.AurasSecret() then return end
 	local a = Aura(BUFF)
 	local exp = a and L.Num(a.expirationTime)
 	if exp and exp > 0 then
@@ -382,7 +384,7 @@ buttonText:SetPoint("TOP", button, "BOTTOM", 0, -LAYOUT.buttonGap)
 
 local function Status(now)
 	local s = Stacks(now)
-	if s == 0 then return "no Well-Rested" end
+	if s == 0 then return L.AurasSecret() and "Well-Rested can't be read here" or "no Well-Rested" end
 	return ("Well-Rested %d/%d (%d%%), %s left"):format(s, MAX_STACKS, s, Clock(Left(now)))
 end
 
@@ -414,6 +416,7 @@ L.Script(button, "OnLeave", function() if GameTooltip then GameTooltip:Hide() en
 local function Want(now)
 	if not (db and db.enabled and db.remind) then return nil end
 	if MaxLevel() or not HaveBag() or CooldownLeft(now) > 0 or InBag(now) then return nil end
+	if L.InPvP() then return nil end   -- a battleground or arena: no camping there (in game 2026-11-06)
 	local function yes(fn) local ok, v = pcall(fn, "player") return ok and L.Value(v) == true end   -- guard: legacy globals
 	if (IsResting and yes(IsResting)) or (IsMounted and yes(IsMounted)) or (UnitOnTaxi and yes(UnitOnTaxi))
 		or (UnitIsDeadOrGhost and yes(UnitIsDeadOrGhost)) then

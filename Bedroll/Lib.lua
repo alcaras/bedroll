@@ -216,6 +216,22 @@ ev:SetScript("OnEvent", L.Safe("events", function(_, event, name)
 	end
 end))
 
+--------------------------------------------------------------------- where you are
+-- aura data secret right now (instances, combat): C_Secrets.ShouldAurasBeSecret where the client has it
+function L.AurasSecret()
+	local fn = C_Secrets and C_Secrets.ShouldAurasBeSecret
+	if not fn then return false end
+	local ok, v = pcall(fn)   -- guard: a client whose answer throws
+	return ok and L.Value(v) == true
+end
+
+-- inside a battleground or arena
+function L.InPvP()
+	if not IsInInstance then return false end
+	local ok, inside, kind = pcall(IsInInstance)   -- guard: legacy global
+	return ok and L.Value(inside) == true and (L.Value(kind) == "pvp" or L.Value(kind) == "arena")
+end
+
 --------------------------------------------------------------------- the rest
 -- "Name-Realm" (UnitName's first value: on Forever the second is the surname); the last readable one while the name
 -- is secret

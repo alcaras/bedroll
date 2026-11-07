@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Bedroll
 ## Notes: Cozy Sleeping Bag: a countdown to Well-Rested 3/3 while you're on it, and a reminder button out of combat when the buff runs low. /bedroll
-## Version: 1.0.2
+## Version: 1.0.3
 ## Author: Dominik
 ## IconTexture: 133662
 ## AllowLoadGameType: camelot
